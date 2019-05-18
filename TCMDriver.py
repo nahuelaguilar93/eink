@@ -1,7 +1,7 @@
 import spidev
 import time
 
-GET_DEVICE_INFO = [0x30, 0x01, 0x01, 0x00]
+GET_DEVICE_INFO = [0x30, 0x01, 0x01, 0x0F]
 POLL_RESPONSE = [0x00, 0x00]
 
 class TCMConnection():
@@ -10,7 +10,14 @@ class TCMConnection():
     def __init__(self, bus=0, device=0):
         self.spi = spidev.SpiDev()
         self.spi.open(bus, device)
+        # According to TCM datasheet: Bit rate up to 3 MHz
         self.spi.max_speed_hz = 5000
+        # SPI mode as two bit pattern of clock polarity and phase [CPOL|CPHA], min: 0b00 = 0, max: 0b11 = 3
+        # According to TCM datasheet:
+        #         Polarity – CPOL = 1; clock transition high-to-low on the leading edge and low-to-high on the trailing edge
+        #         Phase – CPHA = 1; setup on the leading edge and sample on the trailing edge
+        # This was verified as correct by testing the output signal using Analog Discorvery.
+        self.spi.mode = 0b11
 
     def __del__(self):
         self.spi.close()
@@ -48,4 +55,4 @@ conn = TCMConnection()
 while True:
     print("Connected: ", conn.verifyConnection())
     print()
-    time.sleep(5)
+    time.sleep(2)
