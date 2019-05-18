@@ -22,20 +22,28 @@ GET_DEVICE_INFO = (0x30, 0x01, 0x01, 0x00)
 POLL_RESPONSE = [0x00, 0x00]
 
 # Status Codes
-    
-class StatusCodes():
+OK = (0x90, 0x00)
+ERR1 = (0x67, 0x00)
+ERR2 = (0x6C, 0x00)
+ERR3 = (0x6A, 0x00)
+ERR4 = (0x6D, 0x00)
 
-    class _SC():
-        def __init__(self, code=None, name='', message=''):
-            self.code=code
-            self.name=name
-            self.message=message
+class StatusCode():
+	def __init__(self, code=None, name='', message=''):
+	    self.code = code
+	    self.name = name
+	    self.message = message
+    def log(self):
+        t = time.strftime("%Y-%m-%d %H:%M:%S", time.gmtime())
+        print(time, self.code, self.name, self.msg)
 
-    OK = _SC((0x90, 0x00), 'EP_SW_NORMAL_PROCESSING', 'command successfully executed')
-    ERR1 = _SC((0x67, 0x00), 'EP_SW_WRONG_LENGTH', 'incorrect length (invalid Lc value or command too short or too long)')
-    ERR2 = _SC((0x6C, 0x00), 'EP_SW_INVALID_LE', 'invalid Le field')
-    ERR3 = _SC((0x6A, 0x00), 'EP_SW_WRONG_PARAMETERS_P1P2', 'invalid P1 or P2 field')
-    ERR4 = _SC((0x6D, 0x00), 'EP_SW_INSTRUCTION_NOT_SUPPORTED', 'command not supported')
+STATUS_CODE = {
+    OK : StatusCode(OK, 'EP_SW_NORMAL_PROCESSING', 'command successfully executed'),
+    ERR1 : StatusCode(ERR1, 'EP_SW_WRONG_LENGTH', 'incorrect length (invalid Lc value or command too short or too long)'),
+    ERR2 : StatusCode(ERR2, 'EP_SW_INVALID_LE', 'invalid Le field'),
+    ERR3 : StatusCode(ERR3, 'EP_SW_WRONG_PARAMETERS_P1P2', 'invalid P1 or P2 field'),
+    ERR4 : StatusCode(ERR4, 'EP_SW_INSTRUCTION_NOT_SUPPORTED', 'command not supported'),
+}
 
 
 class TCMConnection():
@@ -84,20 +92,17 @@ class TCMConnection():
             return False
         
         strEnd = deviceInfoResponse.index(0x00)
-        if strEnd == 1:
-            print("statusCode: " + str(deviceInfoResponse[:2]))
-            return False
-        elif strEnd < len(deviceInfoResponse):
+        if strEnd < len(deviceInfoResponse):
             deviceInfo = deviceInfoResponse[:strEnd]
             deviceInfo = ''.join(chr(x) for x in deviceInfo)
             print("deviceInfo: " + deviceInfo)
-            statusCode = deviceInfoResponse[strEnd+1:strEnd+3]
+            statusCode = tuple(deviceInfoResponse[strEnd+1:strEnd+3])
             print("statusCode: " + str(statusCode))
+            if statusCode in STATUS_CODE:
+                STATUS_CODE.get(statusCode).log()
             
-            if (deviceInfo == self.DEVICE_INFO and
-                statusCode == [0x90, 0x00]):
+            if (deviceInfo == self.DEVICE_INFO):
                 print("DeviceInfo is the expected.")
-                print("Status code is the expected.")
                 print("Connection Success!")
                 return True
             return False
