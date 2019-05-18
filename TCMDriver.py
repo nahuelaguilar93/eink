@@ -59,7 +59,7 @@ class TCMConnection():
         self.spi = spidev.SpiDev()
         self.spi.open(bus, device)
         # According to TCM datasheet: Bit rate up to 3 MHz
-        self.spi.max_speed_hz = 5000
+        self.spi.max_speed_hz = 500000
         # SPI mode as two bit pattern of clock polarity and phase [CPOL|CPHA], min: 0b00 = 0, max: 0b11 = 3
         # According to TCM datasheet:
         #         Polarity – CPOL = 1; clock transition high-to-low on the leading edge and low-to-high on the trailing edge
@@ -87,7 +87,7 @@ class TCMConnection():
 
     def waitForBusy(self):
         # Wait until bussy is off. This should be replaced by a busy byte read. Abs minimum 28us (T_A+T_BUSY+T_NS)
-        time.sleep(0.1)
+        time.sleep(0.05)
         
     def getDeviceInfo(self):
         self.spi.writebytes(GET_DEVICE_INFO)
@@ -119,27 +119,28 @@ class TCMConnection():
         return False
 
     def displayUpdate(self):
-        self.spi.writebytes(RESET_DATA_POINTER)
+        self.spi.writebytes(DISPLAY_UPDATE)
         self.waitForBusy()
+        time.sleep(2)
         statusCode = tuple(self.spi.readbytes(2))
         if statusCode in STATUS_CODE:
             STATUS_CODE.get(statusCode).log()
             return True
+        print(statusCode)
         return False
     
     def writeHeader(self):
-        self.spi.writebytes(DISPLAY_UPDATE)
+        self.spi.writebytes(WRITE_EDP_HEADER)
         self.waitForBusy()
         statusCode = tuple(self.spi.readbytes(2))
+        self.waitForBusy()
         if statusCode in STATUS_CODE:
             STATUS_CODE.get(statusCode).log()
-            time.sleep(2)
             return True
-        time.sleep(2)
         return False
     
     def writeLine(self, black=True):
-        color = (0x00,) if black else (0xFF,)
+        color = (0xFF,) if black else (0x00,)
         self.spi.writebytes(WRITE_TO_SCREEN + (0x3C,) + 60 * color)
         self.waitForBusy()
         statusCode = tuple(self.spi.readbytes(2))
@@ -173,14 +174,37 @@ while run:
     print("Connected:", conn.verifyConnection())
 #    print("Devide Id:", conn.getDeviceId())
     print("Reseting Data Pointer...")
-    conn.resetDataPointer()
-    conn.writeHeader()
-    for x in range(80):
-        if not conn.writeLine(black=True):
-            raise Exception
-    for x in range(80):
-        if not conn.writeLine(black=False):
-            raise Exception
+    
+    for p in range(2):
+        conn.resetDataPointer()
+        conn.writeHeader()
+        for y in range(200):
+            for x in range(2):
+                if not conn.writeLine(black=True):
+                    raise Exception
+            for x in range(2):
+                if not conn.writeLine(black=False):
+                    raise Exception
+        print(conn.displayUpdate())
+        time.sleep(1)
+        conn.resetDataPointer()
+        conn.writeHeader()
+        for y in range(200):
+            for x in range(3):
+                if not conn.writeLine(black=True):
+                    raise Exception
+            for x in range(1):
+                if not conn.writeLine(black=False):
+                    raise Exception
+        print(conn.displayUpdate())
+
+
+    for z in range(0):
+        print(conn.displayUpdate())
+        conn.resetDataPointer()
+        conn.writeHeader()
+#        conn.writeLine(black=True)
+        time.sleep(5)
     print("Done\n")
     run = False
     time.sleep(5)
