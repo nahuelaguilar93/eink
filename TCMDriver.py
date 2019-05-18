@@ -24,6 +24,7 @@ RESET_DATA_POINTER = (0x20, 0x0D, 0x00)
 EDP_HEADER = (0x3A, 0x01, 0xE0, 0x03, 0x20, 0x01, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00)
 WRITE_TO_SCREEN = (0x20, 0x01, 0x00)
 WRITE_EDP_HEADER = WRITE_TO_SCREEN + (0x10,) + EDP_HEADER
+DISPLAY_UPDATE = (0x24, 0x01, 0x00)
 TERMINATOR = 0x00
 
 # Status Codes
@@ -117,13 +118,24 @@ class TCMConnection():
             return True
         return False
 
-    def writeHeader(self):
-        self.spi.writebytes(WRITE_EDP_HEADER)
+    def displayUpdate(self):
+        self.spi.writebytes(RESET_DATA_POINTER)
         self.waitForBusy()
         statusCode = tuple(self.spi.readbytes(2))
         if statusCode in STATUS_CODE:
             STATUS_CODE.get(statusCode).log()
             return True
+        return False
+    
+    def writeHeader(self):
+        self.spi.writebytes(DISPLAY_UPDATE)
+        self.waitForBusy()
+        statusCode = tuple(self.spi.readbytes(2))
+        if statusCode in STATUS_CODE:
+            STATUS_CODE.get(statusCode).log()
+            time.sleep(2)
+            return True
+        time.sleep(2)
         return False
     
     def writeLine(self, black=True):
@@ -169,6 +181,6 @@ while run:
     for x in range(80):
         if not conn.writeLine(black=False):
             raise Exception
-    print()
+    print("Done\n")
     run = False
     time.sleep(5)
