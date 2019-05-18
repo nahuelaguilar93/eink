@@ -22,6 +22,8 @@ GET_DEVICE_INFO = (0x30, 0x01, 0x01, 0x00)
 GET_DEVICE_ID = (0x30, 0x02, 0x01, 0x14)
 RESET_DATA_POINTER = (0x20, 0x0D, 0x00)
 EDP_HEADER = (0x3A, 0x01, 0xE0, 0x03, 0x20, 0x01, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00)
+WRITE_TO_SCREEN = (0x20, 0x01, 0x00)
+WRITE_EDP_HEADER = WRITE_TO_SCREEN + (0x10,) + EDP_HEADER
 TERMINATOR = 0x00
 
 # Status Codes
@@ -114,7 +116,16 @@ class TCMConnection():
             STATUS_CODE.get(statusCode).log()
             return True
         return False
-    
+
+    def writeHeader(self):
+        self.spi.writebytes(WRITE_EDP_HEADER)
+        self.waitForBusy()
+        statusCode = tuple(self.spi.readbytes(2))
+        if statusCode in STATUS_CODE:
+            STATUS_CODE.get(statusCode).log()
+            return True
+        return False
+        
     def verifyConnection(self):
         deviceInfoResponse = self.getDeviceInfo()
         if TERMINATOR not in deviceInfoResponse:
@@ -141,6 +152,7 @@ while run:
 #    print("Devide Id:", conn.getDeviceId())
     print("Reseting Data Pointer...")
     conn.resetDataPointer()
+    conn.writeHeader()
     print()
     run = False
     time.sleep(5)
