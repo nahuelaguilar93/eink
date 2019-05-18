@@ -125,6 +125,16 @@ class TCMConnection():
             STATUS_CODE.get(statusCode).log()
             return True
         return False
+    
+    def writeLine(self, black=True):
+        color = (0x00,) if black else (0xFF,)
+        self.spi.writebytes(WRITE_TO_SCREEN + (0x3C,) + 60 * color)
+        self.waitForBusy()
+        statusCode = tuple(self.spi.readbytes(2))
+        if statusCode in STATUS_CODE:
+            STATUS_CODE.get(statusCode).log()
+            return True
+        return False
         
     def verifyConnection(self):
         deviceInfoResponse = self.getDeviceInfo()
@@ -153,6 +163,12 @@ while run:
     print("Reseting Data Pointer...")
     conn.resetDataPointer()
     conn.writeHeader()
+    for x in range(80):
+        if not conn.writeLine(black=True):
+            raise Exception
+    for x in range(80):
+        if not conn.writeLine(black=False):
+            raise Exception
     print()
     run = False
     time.sleep(5)
