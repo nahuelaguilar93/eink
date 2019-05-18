@@ -129,17 +129,18 @@ class TCMConnection():
             if statusCode == OK:
                 STATUS_CODE.get(statusCode).log()
                 print("deviceInfo: " + deviceInfo)
-                print("Connection Success!")
                 return True
             else:
                 STATUS_CODE.get(statusCode).log() if statusCode in STATUS_CODE else None
                 return False
 
 conn = TCMConnection()
-while True:
+run = True
+while run:
     print("Connected:", conn.verifyConnection())
-    print("Devide Id:", conn.getDeviceId())
+#    print("Devide Id:", conn.getDeviceId())
+    print("Reseting Data Pointer...")
     conn.resetDataPointer()
     print()
-    
+    run = False
     time.sleep(5)
