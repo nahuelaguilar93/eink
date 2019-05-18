@@ -20,7 +20,9 @@ from enum import Enum
 # +------+----------+----------------------------------+-------------------------------------+----------------+
 
 GET_DEVICE_INFO = (0x30, 0x01, 0x01, 0x00)
+GET_DEVICE_ID = (0x30, 0x02, 0x01, 0x14)
 POLL_RESPONSE = [0x00, 0x00]
+TERMINATOR = 0x00
 
 # Status Codes
 OK = (0x90, 0x00)
@@ -79,17 +81,35 @@ class TCMConnection():
 
     def __del__(self):
         self.spi.close()
+
+    def waitForBussy():
+        # Wait until bussy is off. This should be replaced by a busy byte read. Abs minimum 28us (T_A+T_BUSY+T_NS)
+        time.sleep(0.01)
         
     def getDeviceInfo(self):
         self.spi.writebytes(GET_DEVICE_INFO)
-        # Wait until bussy is off. This should be replaced by a busy byte read. Abs minimum 28us (T_A+T_BUSY+T_NS)
-        time.sleep(0.001)
+        self.waitForBussy()
         return self.spi.readbytes(len(self.DEVICE_INFO)+1+2)
+            
+    def _fetchDeviceId(self):
+        self.spi.writebytes(GET_DEVICE_ID)
+        self.waitForBussy()
+        return self.spi.readbytes(20+2)
+    
+    def getDevicdId(self):
+        fetch = _fetchDeviceId()
+        if len(fetch) != 22:
+            print("error: couldn't fetch device Id")
+        id = fetch[:-2]
+        print(id)
+        statusCode = tuple(fetch[-2:])
+        if statusCode in STATUS_CODE:
+            STATUS_CODE.get(statusCode).log()
     
     def verifyConnection(self):
         deviceInfoResponse = self.getDeviceInfo()
-        if 0x00 not in deviceInfoResponse:
-            print("Zero terminator not found on response.")
+        if TERMINATOR not in deviceInfoResponse:
+            print("error: terminator not found on response.")
             return False
         
         strEnd = deviceInfoResponse.index(0x00)
@@ -109,5 +129,6 @@ class TCMConnection():
 conn = TCMConnection()
 while True:
     print("Connected: ", conn.verifyConnection())
+    print(getDeviceId)
     print()
     time.sleep(2)
