@@ -21,7 +21,7 @@ from enum import Enum
 
 GET_DEVICE_INFO = (0x30, 0x01, 0x01, 0x00)
 GET_DEVICE_ID = (0x30, 0x02, 0x01, 0x14)
-POLL_RESPONSE = [0x00, 0x00]
+EDP_HEADER = (0x3A, 0x01, 0xE0, 0x03, 0x20, 0x01, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00)
 TERMINATOR = 0x00
 
 # Status Codes
@@ -82,7 +82,7 @@ class TCMConnection():
     def __del__(self):
         self.spi.close()
 
-    def waitForBussy():
+    def waitForBussy(self):
         # Wait until bussy is off. This should be replaced by a busy byte read. Abs minimum 28us (T_A+T_BUSY+T_NS)
         time.sleep(0.01)
         
@@ -96,15 +96,15 @@ class TCMConnection():
         self.waitForBussy()
         return self.spi.readbytes(20+2)
     
-    def getDevicdId(self):
-        fetch = _fetchDeviceId()
+    def getDeviceId(self):
+        fetch = self._fetchDeviceId()
         if len(fetch) != 22:
             print("error: couldn't fetch device Id")
         id = fetch[:-2]
-        print(id)
         statusCode = tuple(fetch[-2:])
         if statusCode in STATUS_CODE:
             STATUS_CODE.get(statusCode).log()
+        return id
     
     def verifyConnection(self):
         deviceInfoResponse = self.getDeviceInfo()
@@ -128,7 +128,7 @@ class TCMConnection():
 
 conn = TCMConnection()
 while True:
-    print("Connected: ", conn.verifyConnection())
-    print(getDeviceId)
+    print("Connected:", conn.verifyConnection())
+    print("Devide Id:", conn.getDeviceId())
     print()
-    time.sleep(2)
+    time.sleep(5)
