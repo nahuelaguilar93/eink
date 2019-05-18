@@ -18,6 +18,8 @@ class TCMConnection():
         #         Phase – CPHA = 1; setup on the leading edge and sample on the trailing edge
         # This was verified as correct by testing the output signal using Analog Discorvery.
         self.spi.mode = 0b11
+        # According to TCM datasheet: Bit order – MSB first
+        spi.lsbfirst = False
 
     def __del__(self):
         self.spi.close()
