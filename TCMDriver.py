@@ -1,5 +1,6 @@
 import spidev
 import time
+from enum import Enum
 
 # Connection table
 # +------+----------+----------------------------------+-------------------------------------+----------------+
@@ -17,8 +18,25 @@ import time
 # |   10 | GND      | Supply ground                    |                                     | RPI-30         |
 # +------+----------+----------------------------------+-------------------------------------+----------------+
 
-GET_DEVICE_INFO = [0x30, 0x01, 0x01, 0x00]
+GET_DEVICE_INFO = (0x30, 0x01, 0x01, 0x00)
 POLL_RESPONSE = [0x00, 0x00]
+
+# Status Codes
+    
+class StatusCodes():
+
+    class _SC():
+        def __init__(self, code=None, name='', message=''):
+            self.code=code
+            self.name=name
+            self.message=message
+
+    OK = _SC((0x90, 0x00), 'EP_SW_NORMAL_PROCESSING', 'command successfully executed')
+    ERR1 = _SC((0x67, 0x00), 'EP_SW_WRONG_LENGTH', 'incorrect length (invalid Lc value or command too short or too long)')
+    ERR2 = _SC((0x6C, 0x00), 'EP_SW_INVALID_LE', 'invalid Le field')
+    ERR3 = _SC((0x6A, 0x00), 'EP_SW_WRONG_PARAMETERS_P1P2', 'invalid P1 or P2 field')
+    ERR4 = _SC((0x6D, 0x00), 'EP_SW_INSTRUCTION_NOT_SUPPORTED', 'command not supported')
+
 
 class TCMConnection():
     DEVICE_INFO = 'MpicoSys TC-P74-230_v1.1'
@@ -77,8 +95,7 @@ class TCMConnection():
             print("statusCode: " + str(statusCode))
             
             if (deviceInfo == self.DEVICE_INFO and
-                statusCode[0] == 0x90 and
-                statusCode[1] == 0x00):
+                statusCode == [0x90, 0x00]):
                 print("DeviceInfo is the expected.")
                 print("Status code is the expected.")
                 print("Connection Success!")
