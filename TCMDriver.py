@@ -1,7 +1,6 @@
 import spidev
 from datetime import datetime
 import time
-from enum import Enum
 
 # Connection table
 # +------+----------+----------------------------------+-------------------------------------+----------------+
@@ -21,6 +20,7 @@ from enum import Enum
 
 GET_DEVICE_INFO = (0x30, 0x01, 0x01, 0x00)
 GET_DEVICE_ID = (0x30, 0x02, 0x01, 0x14)
+RESET_DATA_POINTER = (0x20, 0x0D, 0x00)
 EDP_HEADER = (0x3A, 0x01, 0xE0, 0x03, 0x20, 0x01, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00)
 TERMINATOR = 0x00
 
@@ -82,18 +82,18 @@ class TCMConnection():
     def __del__(self):
         self.spi.close()
 
-    def waitForBussy(self):
+    def waitForBusy(self):
         # Wait until bussy is off. This should be replaced by a busy byte read. Abs minimum 28us (T_A+T_BUSY+T_NS)
-        time.sleep(0.01)
+        time.sleep(0.1)
         
     def getDeviceInfo(self):
         self.spi.writebytes(GET_DEVICE_INFO)
-        self.waitForBussy()
+        self.waitForBusy()
         return self.spi.readbytes(len(self.DEVICE_INFO)+1+2)
             
     def _fetchDeviceId(self):
         self.spi.writebytes(GET_DEVICE_ID)
-        self.waitForBussy()
+        self.waitForBusy()
         return self.spi.readbytes(20+2)
     
     def getDeviceId(self):
@@ -105,6 +105,15 @@ class TCMConnection():
         if statusCode in STATUS_CODE:
             STATUS_CODE.get(statusCode).log()
         return id
+    
+    def resetDataPointer(self):
+        self.spi.writebytes(RESET_DATA_POINTER)
+        self.waitForBusy()
+        statusCode = tuple(self.spi.readbytes(2))
+        if statusCode in STATUS_CODE:
+            STATUS_CODE.get(statusCode).log()
+            return True
+        return False
     
     def verifyConnection(self):
         deviceInfoResponse = self.getDeviceInfo()
@@ -130,5 +139,7 @@ conn = TCMConnection()
 while True:
     print("Connected:", conn.verifyConnection())
     print("Devide Id:", conn.getDeviceId())
+    conn.resetDataPointer()
     print()
+    
     time.sleep(5)
