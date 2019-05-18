@@ -1,4 +1,5 @@
 import spidev
+from datetime import datetime
 import time
 from enum import Enum
 
@@ -29,13 +30,13 @@ ERR3 = (0x6A, 0x00)
 ERR4 = (0x6D, 0x00)
 
 class StatusCode():
-	def __init__(self, code=None, name='', message=''):
-	    self.code = code
-	    self.name = name
-	    self.message = message
+    def __init__(self, code=None, name='', message=''):
+        self.code = code
+        self.name = name
+        self.message = message
     def log(self):
-        t = time.strftime("%Y-%m-%d %H:%M:%S", time.gmtime())
-        print(time, self.code, self.name, self.msg)
+        t = datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")
+        print(t, self.code, self.name, self.message, sep=' - ')
 
 STATUS_CODE = {
     OK : StatusCode(OK, 'EP_SW_NORMAL_PROCESSING', 'command successfully executed'),
@@ -95,17 +96,15 @@ class TCMConnection():
         if strEnd < len(deviceInfoResponse):
             deviceInfo = deviceInfoResponse[:strEnd]
             deviceInfo = ''.join(chr(x) for x in deviceInfo)
-            print("deviceInfo: " + deviceInfo)
             statusCode = tuple(deviceInfoResponse[strEnd+1:strEnd+3])
-            print("statusCode: " + str(statusCode))
-            if statusCode in STATUS_CODE:
+            if statusCode == OK:
                 STATUS_CODE.get(statusCode).log()
-            
-            if (deviceInfo == self.DEVICE_INFO):
-                print("DeviceInfo is the expected.")
+                print("deviceInfo: " + deviceInfo)
                 print("Connection Success!")
                 return True
-            return False
+            else:
+                STATUS_CODE.get(statusCode).log() if statusCode in STATUS_CODE else None
+                return False
 
 conn = TCMConnection()
 while True:
