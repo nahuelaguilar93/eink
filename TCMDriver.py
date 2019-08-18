@@ -139,7 +139,7 @@ class TCMConnection():
             return True
         return False
     
-    def writeLine(self, black=True):
+    def _writeLine(self, black=True):
         color = (0xFF,) if black else (0x00,)
         self.spi.writebytes(WRITE_TO_SCREEN + (0x3C,) + 60 * color)
         self.waitForBusy()
@@ -149,6 +149,12 @@ class TCMConnection():
             return True
         return False
         
+    def writeWhiteLine(self):
+        return self._writeLine(black=False)
+
+    def writeBlackLine(self):
+        return self._writeLine()
+
     def verifyConnection(self):
         deviceInfoResponse = self.getDeviceInfo()
         if TERMINATOR not in deviceInfoResponse:
@@ -172,7 +178,7 @@ conn = TCMConnection()
 run = True
 while run:
     print("Connected:", conn.verifyConnection())
-#    print("Devide Id:", conn.getDeviceId())
+    print("Devide Id:", conn.getDeviceId())
     print("Reseting Data Pointer...")
     
     for p in range(2):
@@ -180,10 +186,10 @@ while run:
         conn.writeHeader()
         for y in range(200):
             for x in range(2):
-                if not conn.writeLine(black=True):
+                if not conn.writeBlackLine():
                     raise Exception
             for x in range(2):
-                if not conn.writeLine(black=False):
+                if not conn.writeWhiteLine():
                     raise Exception
         print(conn.displayUpdate())
         time.sleep(1)
@@ -191,10 +197,10 @@ while run:
         conn.writeHeader()
         for y in range(200):
             for x in range(3):
-                if not conn.writeLine(black=True):
+                if not conn.writeBlackLine():
                     raise Exception
             for x in range(1):
-                if not conn.writeLine(black=False):
+                if not conn.writeWhiteLine():
                     raise Exception
         print(conn.displayUpdate())
 
