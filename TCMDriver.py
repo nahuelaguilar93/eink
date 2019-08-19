@@ -185,44 +185,27 @@ class TCMConnection():
                 STATUS_CODE.get(statusCode).log() if statusCode in STATUS_CODE else None
                 return False
 
-
+    def dooplerScreen(self):
+        self.resetDataPointer()
+        self.writeHeader()
+        for _ in range(2):
+            for growing in range(1,20,2):
+                for witdh in range(growing):
+                    self.writeBlackLine()
+                for witdh in range(growing+1):
+                    self.writeWhiteLine()
+            for decreacing in range(19,1,-2):
+                for witdh in range(decreacing):
+                    self.writeBlackLine()
+                for witdh in range(decreacing-1):
+                    self.writeWhiteLine()
+            self.writeBlackLine()
+        self.displayUpdate()
+                
+        
 
 conn = TCMConnection()
-run = True
-while run:
-    print("Connected:", conn.verifyConnection())
-    print("Devide Id:", conn.getDeviceId())
-    print("Reseting Data Pointer...")
-    
-    for p in range(2):
-        conn.resetDataPointer()
-        conn.writeHeader()
-        for y in range(200):
-            for x in range(2):
-                if not conn.writeBlackLine():
-                    raise Exception
-            for x in range(2):
-                if not conn.writeWhiteLine():
-                    raise Exception
-        print(conn.displayUpdate())
-        conn.resetDataPointer()
-        conn.writeHeader()
-        for y in range(200):
-            for x in range(3):
-                if not conn.writeBlackLine():
-                    raise Exception
-            for x in range(1):
-                if not conn.writeWhiteLine():
-                    raise Exception
-        print(conn.displayUpdate())
-
-
-    for z in range(0):
-        print(conn.displayUpdate())
-        conn.resetDataPointer()
-        conn.writeHeader()
-#        conn.writeLine(black=True)
-        time.sleep(5)
-    print("Done\n")
-    run = False
-    time.sleep(5)
+print("Connected:", conn.verifyConnection())
+print("Devide Id:", conn.getDeviceId())
+conn.dooplerScreen()
+print("Done\n")
