@@ -1,6 +1,8 @@
 import spidev
 from datetime import datetime
 import time
+import RPi.GPIO as GPIO
+
 
 # Connection table
 # +------+----------+----------------------------------+-------------------------------------+----------------+
@@ -10,7 +12,7 @@ import time
 # |    2 | /TC_EN   | TC enable                        |                                     | RPI-34         |
 # |    3 | VDDIN    | Power supply for digital part    | Op: 2.7 - 3.3 V | Abs: 0 - 3.6 V    | RPI-17         |
 # |    4 | VIN      | Power supply for analog part     | Op: 2.0 - 5.5 V | Abs: -0.3 - 6.0 V | RPI-02         |
-# |    5 | /TC_BUSY | Host interface busy output       |                                     | (disconnected) |
+# |    5 | /TC_BUSY | Host interface busy output       |                                     | RPI-22         |
 # |    6 | TC_MISO  | Host interface data output       |                                     | RPI-21         |
 # |    7 | TC_MOSI  | Host interface data input        |                                     | RPI-19         |
 # |    8 | /TC_CS   | Host interface chip select input |                                     | RPI-24         |
@@ -18,17 +20,22 @@ import time
 # |   10 | GND      | Supply ground                    |                                     | RPI-30         |
 # +------+----------+----------------------------------+-------------------------------------+----------------+
 
-GET_DEVICE_INFO = (0x30, 0x01, 0x01, 0x00)
-GET_DEVICE_ID = (0x30, 0x02, 0x01, 0x14)
+
+
+GPIO.setmode(GPIO.BOARD)
+BUSY_CHANNEL = 22
+
+GET_DEVICE_INFO    = (0x30, 0x01, 0x01, 0x00)
+GET_DEVICE_ID      = (0x30, 0x02, 0x01, 0x14)
 RESET_DATA_POINTER = (0x20, 0x0D, 0x00)
-EDP_HEADER = (0x3A, 0x01, 0xE0, 0x03, 0x20, 0x01, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00)
-WRITE_TO_SCREEN = (0x20, 0x01, 0x00)
-WRITE_EDP_HEADER = WRITE_TO_SCREEN + (0x10,) + EDP_HEADER
-DISPLAY_UPDATE = (0x24, 0x01, 0x00)
-TERMINATOR = 0x00
+EDP_HEADER         = (0x3A, 0x01, 0xE0, 0x03, 0x20, 0x01, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00)
+WRITE_TO_SCREEN    = (0x20, 0x01, 0x00)
+WRITE_EDP_HEADER   = WRITE_TO_SCREEN + (0x10,) + EDP_HEADER
+DISPLAY_UPDATE     = (0x24, 0x01, 0x00)
+TERMINATOR         = 0x00
 
 # Status Codes
-OK = (0x90, 0x00)
+OK   = (0x90, 0x00)
 ERR1 = (0x67, 0x00)
 ERR2 = (0x6C, 0x00)
 ERR3 = (0x6A, 0x00)
@@ -36,15 +43,15 @@ ERR4 = (0x6D, 0x00)
 
 class StatusCode():
     def __init__(self, code=None, name='', message=''):
-        self.code = code
-        self.name = name
+        self.code    = code
+        self.name    = name
         self.message = message
     def log(self):
         t = datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")
         print(t, self.code, self.name, self.message, sep=' - ')
 
 STATUS_CODE = {
-    OK : StatusCode(OK, 'EP_SW_NORMAL_PROCESSING', 'command successfully executed'),
+    OK   : StatusCode(OK, 'EP_SW_NORMAL_PROCESSING', 'command successfully executed'),
     ERR1 : StatusCode(ERR1, 'EP_SW_WRONG_LENGTH', 'incorrect length (invalid Lc value or command too short or too long)'),
     ERR2 : StatusCode(ERR2, 'EP_SW_INVALID_LE', 'invalid Le field'),
     ERR3 : StatusCode(ERR3, 'EP_SW_WRONG_PARAMETERS_P1P2', 'invalid P1 or P2 field'),
@@ -56,9 +63,13 @@ class TCMConnection():
     DEVICE_INFO = 'MpicoSys TC-P74-230_v1.1'
     
     def __init__(self, bus=0, device=0):
+        GPIO.setup(BUSY_CHANNEL, GPIO.IN)
+        GPIO.add_event_detect(BUSY_CHANNEL, GPIO.RISING)
+        
         self.spi = spidev.SpiDev()
         self.spi.open(bus, device)
         # According to TCM datasheet: Bit rate up to 3 MHz
+        # DO NOT GO OVER 500kHz. The TCM is not being able to receive the commands and returns INSTRUCTION_NOT_SUPPORTED most of the time.
         self.spi.max_speed_hz = 500000
         # SPI mode as two bit pattern of clock polarity and phase [CPOL|CPHA], min: 0b00 = 0, max: 0b11 = 3
         # According to TCM datasheet:
@@ -70,7 +81,7 @@ class TCMConnection():
         # According to library documentation, spi.lsbfirst might be read only,
         # so just make sure it is false or we might need to invert data locally.
         assert self.spi.lsbfirst == False
-        self.spi.cshigh = False
+        self.spi.cshigh        = False
         self.spi.bits_per_word = 8
         
         
@@ -85,18 +96,24 @@ class TCMConnection():
     def __del__(self):
         self.spi.close()
 
-    def waitForBusy(self):
-        # Wait until bussy is off. This should be replaced by a busy byte read. Abs minimum 28us (T_A+T_BUSY+T_NS)
-        time.sleep(0.05)
-        
+    def _waitForBusy(self):
+        """ Wait until bussy is off. Abs minimum 28us (T_A+T_BUSY+T_NS).
+            It usually takes around 1ms. From time to time it might take up to 15ms.
+            Updating the screen takes around 2.5 seconds. """
+        while not GPIO.event_detected(BUSY_CHANNEL):
+            pass
+
+    def write(self, bytesMessage):
+        '''Writes a byte message through SPI and wawits for the busy signal to turn off'''
+        self.spi.writebytes(bytesMessage)
+        self._waitForBusy()
+
     def getDeviceInfo(self):
-        self.spi.writebytes(GET_DEVICE_INFO)
-        self.waitForBusy()
+        self.write(GET_DEVICE_INFO)
         return self.spi.readbytes(len(self.DEVICE_INFO)+1+2)
             
     def _fetchDeviceId(self):
-        self.spi.writebytes(GET_DEVICE_ID)
-        self.waitForBusy()
+        self.write(GET_DEVICE_ID)
         return self.spi.readbytes(20+2)
     
     def getDeviceId(self):
@@ -110,8 +127,7 @@ class TCMConnection():
         return id
     
     def resetDataPointer(self):
-        self.spi.writebytes(RESET_DATA_POINTER)
-        self.waitForBusy()
+        self.write(RESET_DATA_POINTER)
         statusCode = tuple(self.spi.readbytes(2))
         if statusCode in STATUS_CODE:
             STATUS_CODE.get(statusCode).log()
@@ -119,9 +135,7 @@ class TCMConnection():
         return False
 
     def displayUpdate(self):
-        self.spi.writebytes(DISPLAY_UPDATE)
-        self.waitForBusy()
-        time.sleep(2)
+        self.write(DISPLAY_UPDATE)
         statusCode = tuple(self.spi.readbytes(2))
         if statusCode in STATUS_CODE:
             STATUS_CODE.get(statusCode).log()
@@ -130,10 +144,8 @@ class TCMConnection():
         return False
     
     def writeHeader(self):
-        self.spi.writebytes(WRITE_EDP_HEADER)
-        self.waitForBusy()
+        self.write(WRITE_EDP_HEADER)
         statusCode = tuple(self.spi.readbytes(2))
-        self.waitForBusy()
         if statusCode in STATUS_CODE:
             STATUS_CODE.get(statusCode).log()
             return True
@@ -141,8 +153,7 @@ class TCMConnection():
     
     def _writeLine(self, black=True):
         color = (0xFF,) if black else (0x00,)
-        self.spi.writebytes(WRITE_TO_SCREEN + (0x3C,) + 60 * color)
-        self.waitForBusy()
+        self.write(WRITE_TO_SCREEN + (0x3C,) + 60 * color)
         statusCode = tuple(self.spi.readbytes(2))
         if statusCode in STATUS_CODE:
             STATUS_CODE.get(statusCode).log()
@@ -174,6 +185,8 @@ class TCMConnection():
                 STATUS_CODE.get(statusCode).log() if statusCode in STATUS_CODE else None
                 return False
 
+
+
 conn = TCMConnection()
 run = True
 while run:
@@ -192,7 +205,6 @@ while run:
                 if not conn.writeWhiteLine():
                     raise Exception
         print(conn.displayUpdate())
-        time.sleep(1)
         conn.resetDataPointer()
         conn.writeHeader()
         for y in range(200):
