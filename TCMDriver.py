@@ -59,6 +59,30 @@ STATUS_CODE = {
 }
 
 
+class InputMessage():
+    def __init__(self, bytesArray):
+        if tuple(bytesArray[-2:]) in STATUS_CODE:
+            self._statusCode   = tuple(bytesArray[-2:])
+            self._bytesMessage = tuple(bytesArray[:-2])
+        else:
+            self._statusCode   = tuple(bytesArray[:2])
+            self._bytesMessage = tuple()
+
+    def stringMessage(self):
+        return ''.join(chr(c) for c in self._bytesMessage if c!= 0x00)
+    
+    def bytesMessage(self):
+        return self._bytesMessage
+    
+    def statusCode(self):
+        return self._statusCode
+    
+    def statusOk(self):
+        return self._statusCode == OK
+    
+    def logStatusCode(self):
+        STATUS_CODE.get(self._statusCode).log()
+
 class TCMConnection():
     DEVICE_INFO = 'MpicoSys TC-P74-230_v1.1'
     
@@ -94,6 +118,7 @@ class TCMConnection():
         return byte
 
     def __del__(self):
+        GPIO.remove_event_detect(BUSY_CHANNEL)
         self.spi.close()
 
     def _waitForBusy(self):
@@ -107,58 +132,47 @@ class TCMConnection():
         '''Writes a byte message through SPI and wawits for the busy signal to turn off'''
         self.spi.writebytes(bytesMessage)
         self._waitForBusy()
-
-    def getDeviceInfo(self):
+        
+    def _readMessage(self,length):
+        bytesArray = self.spi.readbytes(length)
+        return InputMessage(bytesArray)
+        
+    def _askDeviceInfo(self):
         self.write(GET_DEVICE_INFO)
-        return self.spi.readbytes(len(self.DEVICE_INFO)+1+2)
-            
-    def _fetchDeviceId(self):
-        self.write(GET_DEVICE_ID)
-        return self.spi.readbytes(20+2)
+        message = self._readMessage(len(self.DEVICE_INFO)+1+2)
+        return message
     
-    def getDeviceId(self):
-        fetch = self._fetchDeviceId()
-        if len(fetch) != 22:
-            print("error: couldn't fetch device Id")
-        id = fetch[:-2]
-        statusCode = tuple(fetch[-2:])
-        if statusCode in STATUS_CODE:
-            STATUS_CODE.get(statusCode).log()
-        return id
+    def deviceInfo(self):
+        return self._askDeviceInfo().stringMessage()
+            
+    def _askDeviceId(self):
+        self.write(GET_DEVICE_ID)
+        message = self._readMessage(20+2)
+        return message
+    
+    def deviceId(self):
+        return self._askDeviceId().bytesMessage()
     
     def resetDataPointer(self):
         self.write(RESET_DATA_POINTER)
-        statusCode = tuple(self.spi.readbytes(2))
-        if statusCode in STATUS_CODE:
-            STATUS_CODE.get(statusCode).log()
-            return True
-        return False
+        message = self._readMessage(2)
+        return message.statusOk()
 
     def displayUpdate(self):
         self.write(DISPLAY_UPDATE)
-        statusCode = tuple(self.spi.readbytes(2))
-        if statusCode in STATUS_CODE:
-            STATUS_CODE.get(statusCode).log()
-            return True
-        print(statusCode)
-        return False
+        message = self._readMessage(2)
+        return message.statusOk()
     
     def writeHeader(self):
         self.write(WRITE_EDP_HEADER)
-        statusCode = tuple(self.spi.readbytes(2))
-        if statusCode in STATUS_CODE:
-            STATUS_CODE.get(statusCode).log()
-            return True
-        return False
+        message = self._readMessage(2)
+        return message.statusOk()
     
     def _writeLine(self, black=True):
         color = (0xFF,) if black else (0x00,)
         self.write(WRITE_TO_SCREEN + (0x3C,) + 60 * color)
-        statusCode = tuple(self.spi.readbytes(2))
-        if statusCode in STATUS_CODE:
-            STATUS_CODE.get(statusCode).log()
-            return True
-        return False
+        message = self._readMessage(2)
+        return message.statusOk()
         
     def writeWhiteLine(self):
         return self._writeLine(black=False)
@@ -167,25 +181,10 @@ class TCMConnection():
         return self._writeLine()
 
     def verifyConnection(self):
-        deviceInfoResponse = self.getDeviceInfo()
-        if TERMINATOR not in deviceInfoResponse:
-            print("error: terminator not found on response.")
-            return False
-        
-        strEnd = deviceInfoResponse.index(0x00)
-        if strEnd < len(deviceInfoResponse):
-            deviceInfo = deviceInfoResponse[:strEnd]
-            deviceInfo = ''.join(chr(x) for x in deviceInfo)
-            statusCode = tuple(deviceInfoResponse[strEnd+1:strEnd+3])
-            if statusCode == OK:
-                STATUS_CODE.get(statusCode).log()
-                print("deviceInfo: " + deviceInfo)
-                return True
-            else:
-                STATUS_CODE.get(statusCode).log() if statusCode in STATUS_CODE else None
-                return False
+        message = self._askDeviceInfo()
+        return message.statusOk()
 
-    def dooplerScreen(self):
+    def dopplerScreen(self):
         self.resetDataPointer()
         self.writeHeader()
         for _ in range(2):
@@ -203,9 +202,9 @@ class TCMConnection():
         self.displayUpdate()
                 
         
-
-conn = TCMConnection()
-print("Connected:", conn.verifyConnection())
-print("Devide Id:", conn.getDeviceId())
-conn.dooplerScreen()
-print("Done\n")
+if __name__ == "__main__":
+    conn = TCMConnection()
+    print("Connected:", conn.verifyConnection())
+    print("Device Id:", conn.deviceId())
+    # conn.dopplerScreen()
+    print("Done\n")
