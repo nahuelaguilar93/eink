@@ -184,6 +184,13 @@ class TCMConnection():
         message = self._askDeviceInfo()
         return message.statusOk()
 
+    def whiteScreen(self):
+        self.resetDataPointer()
+        self.writeHeader()
+        for _ in range(800):
+            self.writeWhiteLine()
+        self.displayUpdate()
+
     def dopplerScreen(self):
         self.resetDataPointer()
         self.writeHeader()
@@ -206,5 +213,6 @@ if __name__ == "__main__":
     conn = TCMConnection()
     print("Connected:", conn.verifyConnection())
     print("Device Id:", conn.deviceId())
-    # conn.dopplerScreen()
+    conn.whiteScreen()
+    conn.dopplerScreen()
     print("Done\n")
