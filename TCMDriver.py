@@ -1,5 +1,4 @@
 import spidev
-from datetime import datetime
 import time
 import RPi.GPIO as GPIO
 import logging
@@ -35,7 +34,6 @@ GET_DEVICE_ID      = (0x30, 0x02, 0x01, 0x14)
 RESET_DATA_POINTER = (0x20, 0x0D, 0x00)
 EDP_HEADER         = (0x3A, 0x01, 0xE0, 0x03, 0x20, 0x01, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00)
 WRITE_TO_SCREEN    = (0x20, 0x01, 0x00)
-WRITE_EDP_HEADER   = WRITE_TO_SCREEN + (0x10,) + EDP_HEADER
 DISPLAY_UPDATE     = (0x24, 0x01, 0x00)
 TERMINATOR         = 0x00
 
@@ -74,6 +72,7 @@ STATUS_CODE = {
 
 class InputMessage():
     def __init__(self, bytesArray):
+        self._rawInput = bytesArray
         if tuple(bytesArray[-2:]) in STATUS_CODE:
             self._statusCode   = tuple(bytesArray[-2:])
             self._bytesMessage = tuple(bytesArray[:-2])
@@ -98,20 +97,21 @@ class InputMessage():
         if self._statusCode in STATUS_CODE:
             STATUS_CODE.get(self._statusCode).log()
         else:
-            logging.error('Unrecognized status code {}'.format(self._statusCode))
+            logging.error('Unrecognized status code {}  raw input: {}'.format(self._statusCode, self._rawInput))
 
 class TCMConnection():
     DEVICE_INFO = 'MpicoSys TC-P74-230_v1.1'
     
-    def __init__(self, bus=0, device=0):
-        GPIO.setup(BUSY_CHANNEL, GPIO.IN)
+    def __init__(self, bus=0, device=0, freq=900000):
+        logging.info('Initializing TCM Connection. Bus: {}  Device: {}  Freq: {}Hz'.format(bus, device, freq))
+        GPIO.setup(BUSY_CHANNEL, GPIO.IN, pull_up_down=GPIO.PUD_UP)
         GPIO.add_event_detect(BUSY_CHANNEL, GPIO.RISING)
         
         self.spi = spidev.SpiDev()
         self.spi.open(bus, device)
         # According to TCM datasheet: Bit rate up to 3 MHz
         # DO NOT GO OVER 500kHz. The TCM is not being able to receive the commands and returns INSTRUCTION_NOT_SUPPORTED most of the time.
-        self.spi.max_speed_hz = 500000
+        self.spi.max_speed_hz = freq
         # SPI mode as two bit pattern of clock polarity and phase [CPOL|CPHA], min: 0b00 = 0, max: 0b11 = 3
         # According to TCM datasheet:
         #         Polarity – CPOL = 1; clock transition high-to-low on the leading edge and low-to-high on the trailing edge
@@ -124,6 +124,7 @@ class TCMConnection():
         assert self.spi.lsbfirst == False
         self.spi.cshigh        = False
         self.spi.bits_per_word = 8
+        time.sleep(0.05)  # This little nap avoids communication issues on the firsts messages after setup.
         
         
     def reverseBits(byte):
@@ -142,11 +143,15 @@ class TCMConnection():
         """ Wait until bussy is off. Abs minimum 28us (T_A+T_BUSY+T_NS).
             It usually takes around 1ms. From time to time it might take up to 15ms.
             Updating the screen takes around 2.5 seconds. """
+        timeout = time.time() + 4
         while not GPIO.event_detected(BUSY_CHANNEL):
-            pass
+            if time.time() > timeout:
+                logging.warning('Timeout. Busy signal event not detected')
+                break
 
-    def write(self, bytesMessage):
-        '''Writes a byte message through SPI and wawits for the busy signal to turn off'''
+    def _write(self, bytesMessage):
+        ''' Writes a byte message through SPI and awaits for
+            the busy signal to turn off '''
         self.spi.writebytes(bytesMessage)
         self._waitForBusy()
         
@@ -156,7 +161,7 @@ class TCMConnection():
         
     def _askDeviceInfo(self):
         logging.info('Getting device info')
-        self.write(GET_DEVICE_INFO)
+        self._write(GET_DEVICE_INFO)
         message = self._readMessage(len(self.DEVICE_INFO)+1+2)
         return message
     
@@ -165,7 +170,7 @@ class TCMConnection():
             
     def _askDeviceId(self):
         logging.info('Getting device ID')
-        self.write(GET_DEVICE_ID)
+        self._write(GET_DEVICE_ID)
         message = self._readMessage(20+2)
         return message
     
@@ -174,61 +179,74 @@ class TCMConnection():
     
     def resetDataPointer(self):
         logging.info('Reseting Data Pointer')
-        self.write(RESET_DATA_POINTER)
+        self._write(RESET_DATA_POINTER)
         message = self._readMessage(2)
         return message.statusOk()
 
     def displayUpdate(self):
         logging.info('Updating Display')
-        self.write(DISPLAY_UPDATE)
+        self._write(DISPLAY_UPDATE)
         message = self._readMessage(2)
+        return message.statusOk()
+
+    def _writeImageData(self, byteArray, attempts=10):
+        '''The command uploads image data (in EPD file format)
+           to TCon image memory. The data needs to be divided
+           into packets and transferred with multiple calls to
+           this command.
+           
+           byteArray: EPD formated image packet. Max Size: 250
+           
+           '''
+        for attempt in range(attempts):
+            self._write(WRITE_TO_SCREEN + (len(byteArray),) + byteArray)
+            message = self._readMessage(2)
+            if message.statusOk():
+                break
+            logging.warning('Writing attempt {}/{} failed'.format(attempt+1, attempts) )
         return message.statusOk()
     
     def writeHeader(self):
-        self.write(WRITE_EDP_HEADER)
-        message = self._readMessage(2)
-        return message.statusOk()
-    
-    def _writeLine(self, black=True):
-        color = (0xFF,) if black else (0x00,)
-        self.write(WRITE_TO_SCREEN + (0x3C,) + 60 * color)
-        message = self._readMessage(2)
-        return message.statusOk()
+        return self._writeImageData(EDP_HEADER)
         
     def writeWhiteLine(self):
-        return self._writeLine(black=False)
+        return self._writeImageData((0x00,)*60)
 
     def writeBlackLine(self):
-        return self._writeLine()
+        return self._writeImageData((0xFF,)*60)
 
     def verifyConnection(self):
         logging.info('Verifying TCM connection')
         message = self._askDeviceInfo()
         return message.statusOk()
 
-    def whiteScreen(self):
+    def writeFullScreen(self, bitArray ):
         self.resetDataPointer()
         self.writeHeader()
-        for _ in range(800):
-            self.writeWhiteLine()
-        self.displayUpdate()
+        for ix in range(0, len(bitArray), 250):
+            self._writeImageData(bitArray[ix:ix+250])
+        self.displayUpdate()        
+
+    def whiteScreen(self):
+        self.writeFullScreen((0x00,)*60*800)
 
     def dopplerScreen(self):
-        self.resetDataPointer()
-        self.writeHeader()
+        byteArray = []
+        WHITE_LINE = (0x00,)*60
+        BLACK_LINE = (0xFF,)*60
         for _ in range(2):
             for growing in range(1,20,2):
                 for witdh in range(growing):
-                    self.writeBlackLine()
+                    byteArray.extend(BLACK_LINE)
                 for witdh in range(growing+1):
-                    self.writeWhiteLine()
+                    byteArray.extend(WHITE_LINE)
             for decreacing in range(19,1,-2):
                 for witdh in range(decreacing):
-                    self.writeBlackLine()
+                    byteArray.extend(BLACK_LINE)
                 for witdh in range(decreacing-1):
-                    self.writeWhiteLine()
-            self.writeBlackLine()
-        self.displayUpdate()
+                    byteArray.extend(WHITE_LINE)
+            byteArray.extend(BLACK_LINE)
+        self.writeFullScreen(tuple(byteArray))
                 
         
 if __name__ == "__main__":
@@ -236,5 +254,6 @@ if __name__ == "__main__":
     print("Connected:", conn.verifyConnection())
     print("Device Id:", conn.deviceId())
     conn.whiteScreen()
+#    conn.whiteScreen()
     conn.dopplerScreen()
     print("Done\n")
