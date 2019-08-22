@@ -2,6 +2,11 @@ import spidev
 from datetime import datetime
 import time
 import RPi.GPIO as GPIO
+import logging
+
+logging.basicConfig( format = '%(asctime)s [%(levelname)s] %(message)s',
+                     level  = logging.INFO )
+
 
 
 # Connection table
@@ -46,16 +51,24 @@ class StatusCode():
         self.code    = code
         self.name    = name
         self.message = message
+        
+    def logMessage(self):
+        return ' - '.join((str(self.code), self.name, self.message))
+        
+class SuccessCode(StatusCode):
     def log(self):
-        t = datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")
-        print(t, self.code, self.name, self.message, sep=' - ')
+        logging.debug(self.logMessage())
+
+class ErrorCode(StatusCode):
+    def log(self):
+        logging.error(self.logMessage())
 
 STATUS_CODE = {
-    OK   : StatusCode(OK, 'EP_SW_NORMAL_PROCESSING', 'command successfully executed'),
-    ERR1 : StatusCode(ERR1, 'EP_SW_WRONG_LENGTH', 'incorrect length (invalid Lc value or command too short or too long)'),
-    ERR2 : StatusCode(ERR2, 'EP_SW_INVALID_LE', 'invalid Le field'),
-    ERR3 : StatusCode(ERR3, 'EP_SW_WRONG_PARAMETERS_P1P2', 'invalid P1 or P2 field'),
-    ERR4 : StatusCode(ERR4, 'EP_SW_INSTRUCTION_NOT_SUPPORTED', 'command not supported'),
+    OK   : SuccessCode(OK, 'EP_SW_NORMAL_PROCESSING', 'command successfully executed'),
+    ERR1 : ErrorCode(ERR1, 'EP_SW_WRONG_LENGTH', 'incorrect length (invalid Lc value or command too short or too long)'),
+    ERR2 : ErrorCode(ERR2, 'EP_SW_INVALID_LE', 'invalid Le field'),
+    ERR3 : ErrorCode(ERR3, 'EP_SW_WRONG_PARAMETERS_P1P2', 'invalid P1 or P2 field'),
+    ERR4 : ErrorCode(ERR4, 'EP_SW_INSTRUCTION_NOT_SUPPORTED', 'command not supported'),
 }
 
 
@@ -67,6 +80,7 @@ class InputMessage():
         else:
             self._statusCode   = tuple(bytesArray[:2])
             self._bytesMessage = tuple()
+        self.log()
 
     def stringMessage(self):
         return ''.join(chr(c) for c in self._bytesMessage if c!= 0x00)
@@ -80,8 +94,11 @@ class InputMessage():
     def statusOk(self):
         return self._statusCode == OK
     
-    def logStatusCode(self):
-        STATUS_CODE.get(self._statusCode).log()
+    def log(self):
+        if self._statusCode in STATUS_CODE:
+            STATUS_CODE.get(self._statusCode).log()
+        else:
+            logging.error('Unrecognized status code {}'.format(self._statusCode))
 
 class TCMConnection():
     DEVICE_INFO = 'MpicoSys TC-P74-230_v1.1'
@@ -138,6 +155,7 @@ class TCMConnection():
         return InputMessage(bytesArray)
         
     def _askDeviceInfo(self):
+        logging.info('Getting device info')
         self.write(GET_DEVICE_INFO)
         message = self._readMessage(len(self.DEVICE_INFO)+1+2)
         return message
@@ -146,6 +164,7 @@ class TCMConnection():
         return self._askDeviceInfo().stringMessage()
             
     def _askDeviceId(self):
+        logging.info('Getting device ID')
         self.write(GET_DEVICE_ID)
         message = self._readMessage(20+2)
         return message
@@ -154,11 +173,13 @@ class TCMConnection():
         return self._askDeviceId().bytesMessage()
     
     def resetDataPointer(self):
+        logging.info('Reseting Data Pointer')
         self.write(RESET_DATA_POINTER)
         message = self._readMessage(2)
         return message.statusOk()
 
     def displayUpdate(self):
+        logging.info('Updating Display')
         self.write(DISPLAY_UPDATE)
         message = self._readMessage(2)
         return message.statusOk()
@@ -181,6 +202,7 @@ class TCMConnection():
         return self._writeLine()
 
     def verifyConnection(self):
+        logging.info('Verifying TCM connection')
         message = self._askDeviceInfo()
         return message.statusOk()
 
