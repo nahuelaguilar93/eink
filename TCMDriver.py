@@ -2,6 +2,7 @@ import spidev
 import time
 import RPi.GPIO as GPIO
 import logging
+from utils import bitsToFormatType4bytes
 
 logging.basicConfig( format = '%(asctime)s [%(levelname)s] %(message)s',
                      level  = logging.INFO )
@@ -43,6 +44,9 @@ ERR1 = (0x67, 0x00)
 ERR2 = (0x6C, 0x00)
 ERR3 = (0x6A, 0x00)
 ERR4 = (0x6D, 0x00)
+
+SCREEN_WIDTH = 800
+SCREEN_HEIGHT = 480
 
 class StatusCode():
     def __init__(self, code=None, name='', message=''):
@@ -102,7 +106,7 @@ class InputMessage():
 class TCMConnection():
     DEVICE_INFO = 'MpicoSys TC-P74-230_v1.1'
     
-    def __init__(self, bus=0, device=0, freq=900000):
+    def __init__(self, bus=0, device=0, freq=500000):
         logging.info('Initializing TCM Connection. Bus: {}  Device: {}  Freq: {}Hz'.format(bus, device, freq))
         GPIO.setup(BUSY_CHANNEL, GPIO.IN, pull_up_down=GPIO.PUD_UP)
         GPIO.add_event_detect(BUSY_CHANNEL, GPIO.RISING)
@@ -220,15 +224,15 @@ class TCMConnection():
         message = self._askDeviceInfo()
         return message.statusOk()
 
-    def writeFullScreen(self, bitArray ):
+    def writeFullScreen(self, byteArray ):
         self.resetDataPointer()
         self.writeHeader()
-        for ix in range(0, len(bitArray), 250):
-            self._writeImageData(bitArray[ix:ix+250])
+        for ix in range(0, len(byteArray), 250):
+            self._writeImageData(byteArray[ix:ix+250])
         self.displayUpdate()        
 
     def whiteScreen(self):
-        self.writeFullScreen((0x00,)*60*800)
+        self.writeFullScreen((0x00,)*SCREEN_WIDTH*SCREEN_HEIGHT//8)
 
     def dopplerScreen(self):
         byteArray = []
@@ -247,13 +251,33 @@ class TCMConnection():
                     byteArray.extend(WHITE_LINE)
             byteArray.extend(BLACK_LINE)
         self.writeFullScreen(tuple(byteArray))
-                
+        
+    def polarPatternScreen(self, coorCallback, centered=True):
+        dx, dy = (0, 0)
+        if centered:
+            dx, dy = ( -SCREEN_WIDTH//2, -SCREEN_HEIGHT//2 )
+        bitArray = []
+        for x in range(dx, SCREEN_WIDTH + dx):
+            for y in range(dy, SCREEN_HEIGHT + dy):
+                if coorCallback(x, y):
+                    bitArray.append(1)
+                else:
+                    bitArray.append(0)
+        byteArray = bitsToFormatType4bytes(bitArray)
+        self.writeFullScreen(tuple(byteArray))
+    
+    def coolCirclePatternScreen(self):
+        self.polarPatternScreen(lambda x, y: (x**3+y**3) % 500000 > 120000)
+        
+    def bibrationPatternScreen(self):
+        from math import sin, pi
+        self.polarPatternScreen(lambda x, y: 100*(sin(7*pi*x/SCREEN_WIDTH) + sin(4*pi*y/SCREEN_HEIGHT)) %10 > 7, centered=False)
         
 if __name__ == "__main__":
     conn = TCMConnection()
     print("Connected:", conn.verifyConnection())
     print("Device Id:", conn.deviceId())
-    conn.whiteScreen()
+    conn.bibrationPatternScreen()
 #    conn.whiteScreen()
-    conn.dopplerScreen()
+#    conn.dopplerScreen()
     print("Done\n")
