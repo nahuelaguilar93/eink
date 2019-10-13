@@ -13,8 +13,8 @@ logging.basicConfig( format = '%(asctime)s [%(levelname)s] %(message)s',
 # +------+----------+----------------------------------+-------------------------------------+----------------+
 # | Pin  |   Name   |             Remarks              |               Details               |   Connect to   |
 # +------+----------+----------------------------------+-------------------------------------+----------------+
-# |    1 | GND      | Supply ground                    |                                     | RPI-39         |
-# |    2 | /TC_EN   | TC enable                        |                                     | RPI-34         |
+# |    1 | GND      | Supply ground                    |                                     | RPI-06         |
+# |    2 | /TC_EN   | TC enable                        |                                     | RPI-20         |
 # |    3 | VDDIN    | Power supply for digital part    | Op: 2.7 - 3.3 V | Abs: 0 - 3.6 V    | RPI-17         |
 # |    4 | VIN      | Power supply for analog part     | Op: 2.0 - 5.5 V | Abs: -0.3 - 6.0 V | RPI-02         |
 # |    5 | /TC_BUSY | Host interface busy output       |                                     | RPI-22         |
@@ -22,7 +22,7 @@ logging.basicConfig( format = '%(asctime)s [%(levelname)s] %(message)s',
 # |    7 | TC_MOSI  | Host interface data input        |                                     | RPI-19         |
 # |    8 | /TC_CS   | Host interface chip select input |                                     | RPI-24         |
 # |    9 | TC_SCK   | Host interface clock input       |                                     | RPI-23         |
-# |   10 | GND      | Supply ground                    |                                     | RPI-30         |
+# |   10 | GND      | Supply ground                    |                                     | RPI-25         |
 # +------+----------+----------------------------------+-------------------------------------+----------------+
 
 
@@ -203,7 +203,7 @@ class TCMConnection():
            
            '''
         for attempt in range(attempts):
-            self._write(WRITE_TO_SCREEN + (len(byteArray),) + byteArray)
+            self._write(WRITE_TO_SCREEN + (len(byteArray),) + tuple(byteArray))
             message = self._readMessage(2)
             if message.statusOk():
                 break
@@ -212,12 +212,6 @@ class TCMConnection():
     
     def writeHeader(self):
         return self._writeImageData(EDP_HEADER)
-        
-    def writeWhiteLine(self):
-        return self._writeImageData((0x00,)*60)
-
-    def writeBlackLine(self):
-        return self._writeImageData((0xFF,)*60)
 
     def verifyConnection(self):
         logging.info('Verifying TCM connection')
@@ -232,7 +226,7 @@ class TCMConnection():
         self.displayUpdate()        
 
     def whiteScreen(self):
-        self.writeFullScreen((0x00,)*SCREEN_WIDTH*SCREEN_HEIGHT//8)
+        self.writeFullScreen((0x00,)*(SCREEN_WIDTH*SCREEN_HEIGHT//8))
 
     def dopplerScreen(self):
         byteArray = []
@@ -271,13 +265,11 @@ class TCMConnection():
         
     def bibrationPatternScreen(self):
         from math import sin, pi
-        self.polarPatternScreen(lambda x, y: 100*(sin(7*pi*x/SCREEN_WIDTH) + sin(4*pi*y/SCREEN_HEIGHT)) %10 > 7, centered=False)
+        self.polarPatternScreen(lambda x, y: 100*(sin(7*pi*x/SCREEN_WIDTH) + sin(4*pi*y/SCREEN_HEIGHT)) %20 > 15, centered=False)
         
 if __name__ == "__main__":
     conn = TCMConnection()
     print("Connected:", conn.verifyConnection())
     print("Device Id:", conn.deviceId())
     conn.bibrationPatternScreen()
-#    conn.whiteScreen()
-#    conn.dopplerScreen()
     print("Done\n")
