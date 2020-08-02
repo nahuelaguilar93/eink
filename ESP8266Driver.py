@@ -87,18 +87,20 @@ def getConnection():
     esp.reset()
     #esp.factoryReset()
     esp.setWifiModeToClient()
-    esp.wifiConnect( 'PochiNet 0.5', 'prohibidofumar247' )
-    #esp.wifiConnect( 'Nahuel Android', '66666666' )
+    #esp.wifiConnect( 'PochiNet 0.5', 'prohibidofumar247' )
+    esp.wifiConnect( 'Nahuel Android', '66666666' )
     return esp
 
 def getTimeToSleep(esp):
-    esp.establishTCPConnection( 'http://750ba94f.ngrok.io' )
+    esp.establishTCPConnection( 'http://793b352c1799.ngrok.io' )
     response = esp.getRequest( '/aula115/time_till_wake_up' )
     return int(response[-1].decode('utf-8').strip('\r\n').strip('CLOSED'))
 
-def getImageData(esp):
-    esp.establishTCPConnection( 'http://750ba94f.ngrok.io' )
+def getImageData(esp, raw = False):
+    esp.establishTCPConnection( 'http://793b352c1799.ngrok.io' )
     b = esp.getRequest( '/aula115/digested_image' )
+    if raw:
+        return b
     toStrip = ['\r\n','CLOSED','+IPD,1460:','+IPD,1437:']
     for stripIt in toStrip:
         b = [stripBytes(x, stripIt) for x in b]
