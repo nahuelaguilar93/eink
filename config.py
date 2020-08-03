@@ -1,1 +1,1 @@
-NGROK_LINK = "http://e42a44a16205.ngrok.io" 
+NGROK_LINK = "https://501ab5d37965.ngrok.io" 
