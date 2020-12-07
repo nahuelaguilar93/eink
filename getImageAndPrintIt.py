@@ -1,4 +1,5 @@
-link = 'https://a0e41fa6.ngrok.io/img-download/'
+from config import NGROK_LINK
+link = NGROK_LINK+'/img-download/'
 import requests
 print('downloading img')
 img = requests.get(link)
